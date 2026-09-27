@@ -1,12 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:stream_chat_flutter/stream_chat_flutter.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import 'reaction_picker.dart';
+import '../../domain/chat_message.dart';
+import '../providers/chat_providers.dart';
 
 /// Copies [message]'s text to the clipboard and confirms with a snackbar.
-Future<void> copyMessageText(BuildContext context, Message message) async {
-  await Clipboard.setData(ClipboardData(text: message.text ?? ''));
+Future<void> copyMessageText(BuildContext context, ChatMessage message) async {
+  await Clipboard.setData(ClipboardData(text: message.text));
   if (!context.mounted) return;
   ScaffoldMessenger.of(context).showSnackBar(
     const SnackBar(
@@ -16,33 +17,25 @@ Future<void> copyMessageText(BuildContext context, Message message) async {
   );
 }
 
-/// Opens the emoji [ReactionPicker] and sends the chosen reaction type.
-Future<void> reactToMessage(
-  BuildContext context,
-  Channel channel,
-  Message message,
-) async {
-  final type = await showModalBottomSheet<String>(
-    context: context,
-    showDragHandle: true,
-    builder: (_) => const ReactionPicker(),
+/// Local-only thumbs up/down acknowledgement on an assistant reply. There's
+/// no backend here to persist it to — this just demonstrates the
+/// interaction, matching what a class assignment needs to show.
+void sendFeedback(BuildContext context, bool positive) {
+  ScaffoldMessenger.of(context).showSnackBar(
+    SnackBar(
+      content: Text(positive ? 'Thanks for the feedback!' : 'Feedback noted.'),
+      duration: const Duration(seconds: 1),
+    ),
   );
-  if (type == null) return;
-  try {
-    await channel.sendReaction(message, type);
-  } catch (e) {
-    if (!context.mounted) return;
-    ScaffoldMessenger.of(context)
-        .showSnackBar(SnackBar(content: Text('Could not react: $e')));
-  }
 }
 
-/// Opens an edit dialog pre-filled with [message]'s text and saves the
-/// change via [Channel.updateMessage] if the user confirms.
-Future<void> editMessage(
+/// Opens an edit dialog for one of the user's own messages. Saving it
+/// discards every message after it and resends the edited text so the
+/// assistant regenerates its reply from that point.
+Future<void> editAndResend(
   BuildContext context,
-  Channel channel,
-  Message message,
+  WidgetRef ref,
+  ChatMessage message,
 ) async {
   final controller = TextEditingController(text: message.text);
   final newText = await showDialog<String>(
@@ -63,18 +56,15 @@ Future<void> editMessage(
         FilledButton(
           onPressed: () =>
               Navigator.of(dialogContext).pop(controller.text.trim()),
-          child: const Text('Save'),
+          child: const Text('Save & resend'),
         ),
       ],
     ),
   );
   controller.dispose();
   if (newText == null || newText.isEmpty || newText == message.text) return;
-  try {
-    await channel.updateMessage(message.copyWith(text: newText));
-  } catch (e) {
-    if (!context.mounted) return;
-    ScaffoldMessenger.of(context)
-        .showSnackBar(SnackBar(content: Text('Could not save edit: $e')));
-  }
+ await ref.read(chatListProvider.notifier).regenerateFrom(
+      message.id,
+      newText,
+    );
 }

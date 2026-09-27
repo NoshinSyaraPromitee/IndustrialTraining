@@ -1,52 +1,49 @@
 import 'package:flutter/material.dart';
-import 'package:stream_chat_flutter/stream_chat_flutter.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../domain/chat_message.dart';
 import 'action_icon.dart';
 import 'message_actions.dart';
 
-/// Row of small, always-visible icon buttons shown under a message bubble:
-/// copy text, react with an emoji, and (for the sender only) edit the text.
-class MessageActionBar extends StatelessWidget {
-  const MessageActionBar({
-    super.key,
-    required this.message,
-    required this.isMine,
-  });
+/// Row of small icon buttons under a bubble: copy for every message, edit
+/// for the user's own messages, and thumbs up/down feedback on AI replies.
+class MessageActionBar extends ConsumerWidget {
+  const MessageActionBar({super.key, required this.message});
 
-  final Message message;
-  final bool isMine;
+  final ChatMessage message;
 
   @override
-  Widget build(BuildContext context) {
-    final channel = StreamChannel.of(context).channel;
+  Widget build(BuildContext context, WidgetRef ref) {
+    final isUser = message.role == ChatRole.user;
 
     return Padding(
-      padding: EdgeInsets.only(
-        left: isMine ? 0 : 12,
-        right: isMine ? 12 : 0,
-        bottom: 6,
-      ),
+      padding: const EdgeInsets.only(top: 2),
       child: Row(
         mainAxisSize: MainAxisSize.min,
-        mainAxisAlignment:
-            isMine ? MainAxisAlignment.end : MainAxisAlignment.start,
         children: [
           ActionIcon(
             icon: Icons.copy_rounded,
             tooltip: 'Copy',
             onTap: () => copyMessageText(context, message),
           ),
-          ActionIcon(
-            icon: Icons.emoji_emotions_outlined,
-            tooltip: 'React',
-            onTap: () => reactToMessage(context, channel, message),
-          ),
-          if (isMine)
+          if (isUser)
             ActionIcon(
               icon: Icons.edit_outlined,
-              tooltip: 'Edit',
-              onTap: () => editMessage(context, channel, message),
+              tooltip: 'Edit & resend',
+              onTap: () => editAndResend(context, ref, message),
+            )
+          else ...[
+            ActionIcon(
+              icon: Icons.thumb_up_outlined,
+              tooltip: 'Good response',
+              onTap: () => sendFeedback(context, true),
             ),
+            ActionIcon(
+              icon: Icons.thumb_down_outlined,
+              tooltip: 'Bad response',
+              onTap: () => sendFeedback(context, false),
+            ),
+          ],
         ],
       ),
     );
